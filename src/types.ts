@@ -14,6 +14,8 @@ export interface Project {
   description?: string;
   hasTarget: boolean;
   targetAmount?: number;
+  deadline?: string;
+  status?: 'active' | 'completed';
   createdAt: string;
 }
 

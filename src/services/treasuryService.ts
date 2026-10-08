@@ -128,9 +128,15 @@ export async function addProjectToDB(project: Omit<Project, 'id'>) {
   const newRef = doc(collection(db, PROJECTS_COL));
   const newProject: Project = {
     ...project,
+    status: project.status || 'active',
     id: newRef.id
   };
   await setDoc(newRef, cleanData(newProject));
+}
+
+// Update a project in Firestore
+export async function updateProjectInDB(projectId: string, updates: Partial<Project>) {
+  await setDoc(doc(db, PROJECTS_COL, projectId), cleanData(updates), { merge: true });
 }
 
 // Delete a project from Firestore

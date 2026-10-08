@@ -1,26 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Project } from '../types';
-import { X, Target, Calendar } from 'lucide-react';
+import { X, Target, Calendar, CheckCircle2, RotateCcw } from 'lucide-react';
 
-interface AddProjectModalProps {
+interface EditProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddProject: (project: Omit<Project, 'id' | 'createdAt'>) => void;
+  project: Project | null;
+  onUpdateProject: (projectId: string, updates: Partial<Project>) => void;
+  onDeleteProject: (projectId: string) => void;
 }
 
-export const AddProjectModal: React.FC<AddProjectModalProps> = ({
+export const EditProjectModal: React.FC<EditProjectModalProps> = ({
   isOpen,
   onClose,
-  onAddProject
+  project,
+  onUpdateProject,
+  onDeleteProject
 }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [hasTarget, setHasTarget] = useState(false);
   const [targetAmountStr, setTargetAmountStr] = useState('');
   const [deadline, setDeadline] = useState('');
+  const [status, setStatus] = useState<'active' | 'completed'>('active');
   const [error, setError] = useState('');
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (project) {
+      setName(project.name || '');
+      setDescription(project.description || '');
+      setHasTarget(Boolean(project.hasTarget));
+      setTargetAmountStr(project.targetAmount ? String(project.targetAmount) : '');
+      setDeadline(project.deadline || '');
+      setStatus(project.status || 'active');
+      setError('');
+    }
+  }, [project]);
+
+  if (!isOpen || !project) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,22 +56,21 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
       targetAmount = parsed;
     }
 
-    onAddProject({
+    onUpdateProject(project.id, {
       name: name.trim(),
       description: description.trim() || undefined,
       hasTarget,
       targetAmount,
       deadline: deadline.trim() || undefined,
-      status: 'active'
+      status
     });
 
-    setName('');
-    setDescription('');
-    setHasTarget(false);
-    setTargetAmountStr('');
-    setDeadline('');
-    setError('');
     onClose();
+  };
+
+  const handleToggleStatus = () => {
+    const nextStatus = status === 'active' ? 'completed' : 'active';
+    setStatus(nextStatus);
   };
 
   return (
@@ -69,14 +85,14 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
 
         <div className="flex items-center gap-2 mb-1">
           <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-sm">
-            🎯
+            ✏️
           </div>
           <h2 className="text-base font-bold text-slate-900">
-            Nouveau projet de classe
+            Modifier le projet
           </h2>
         </div>
         <p className="text-xs text-slate-500 mb-4">
-          Créez un projet de classe avec date limite et objectif financier optionnels
+          Ajustez les détails, la date limite ou mettez fin au projet
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-3.5 text-left text-xs">
@@ -91,9 +107,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
                 setName(e.target.value);
                 if (error) setError('');
               }}
-              placeholder="Ex: Maillots de classe, Fête de fin d'année, Journée créole"
               required
-              autoFocus
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-emerald-600"
             />
           </div>
@@ -106,7 +120,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
               rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Précisez les détails ou l'utilité du projet..."
+              placeholder="Précisez les détails du projet..."
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-emerald-600"
             />
           </div>
@@ -130,7 +144,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
             <div className="flex items-center justify-between">
               <span className="font-semibold text-slate-800 flex items-center gap-1.5">
                 <Target className="w-3.5 h-3.5 text-emerald-600" />
-                Ajouter un objectif financier ?
+                Objectif financier ?
               </span>
               <div className="flex items-center gap-1 bg-white p-0.5 border border-slate-200 rounded-lg">
                 <button
@@ -176,26 +190,74 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
             )}
           </div>
 
+          {/* Statut du projet : Actif ou Terminé (Bouton pour mettre fin au projet) */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+            <div>
+              <span className="font-semibold text-slate-800 block">
+                Statut du projet
+              </span>
+              <span className="text-[11px] text-slate-500">
+                {status === 'completed' ? 'Ce projet est clôturé et terminé.' : 'Ce projet est actuellement en cours.'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleStatus}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                status === 'completed'
+                  ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300'
+                  : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+              }`}
+            >
+              {status === 'completed' ? (
+                <>
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Rouvrir</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Mettre fin au projet</span>
+                </>
+              )}
+            </button>
+          </div>
+
           {error && (
             <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 text-xs font-medium">
               {error}
             </div>
           )}
 
-          <div className="pt-2 flex justify-end gap-2">
+          <div className="pt-2 flex items-center justify-between">
             <button
               type="button"
-              onClick={onClose}
-              className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700 cursor-pointer"
+              onClick={() => {
+                if (window.confirm('Voulez-vous supprimer définitivement ce projet ?')) {
+                  onDeleteProject(project.id);
+                  onClose();
+                }
+              }}
+              className="text-xs text-rose-600 hover:text-rose-800 underline cursor-pointer"
             >
-              Annuler
+              Supprimer le projet
             </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg transition-colors cursor-pointer text-xs"
-            >
-              Créer le projet
-            </button>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700 cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg transition-colors cursor-pointer text-xs"
+              >
+                Enregistrer
+              </button>
+            </div>
           </div>
         </form>
       </div>

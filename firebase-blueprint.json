@@ -58,6 +58,8 @@
         "description": { "type": "string" },
         "hasTarget": { "type": "boolean" },
         "targetAmount": { "type": "number" },
+        "deadline": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "completed"] },
         "createdAt": { "type": "string" }
       },
       "required": ["id", "name", "hasTarget", "createdAt"]

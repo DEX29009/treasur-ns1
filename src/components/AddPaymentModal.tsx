@@ -222,8 +222,8 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
                 >
                   <option value="">Non (Caisse générale de la classe)</option>
                   {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      🎯 {p.name} {p.hasTarget && p.targetAmount ? `(Objectif : ${p.targetAmount} HTG)` : '(Sans objectif)'}
+                    <option key={p.id} value={p.id} disabled={p.status === 'completed'}>
+                      🎯 {p.name} {p.status === 'completed' ? '(Terminé - clôturé)' : p.hasTarget && p.targetAmount ? `(Objectif : ${p.targetAmount} HTG)` : '(Sans objectif)'}
                     </option>
                   ))}
                 </select>

@@ -13,17 +13,20 @@ import {
   addContributionToDB, 
   addExpenseToDB, 
   addProjectToDB, 
+  updateProjectInDB,
   deleteProjectFromDB,
   resetAllDataInDB
 } from './services/treasuryService';
 import { getInitialStudents } from './data/studentsData';
 import { getGradeForAmount, formatCurrency } from './utils/grades';
 import { ProfileSelectionView } from './components/ProfileSelectionView';
+import { PodiumSection } from './components/PodiumSection';
 import { GradesTableSection } from './components/GradesTableSection';
 import { ProjectsSection } from './components/ProjectsSection';
 import { AddPaymentModal } from './components/AddPaymentModal';
 import { AddExpenseSimpleModal } from './components/AddExpenseSimpleModal';
 import { AddProjectModal } from './components/AddProjectModal';
+import { EditProjectModal } from './components/EditProjectModal';
 import { Plus, Minus, RotateCcw } from 'lucide-react';
 
 export default function App() {
@@ -46,6 +49,8 @@ export default function App() {
   const [preselectedStudentId, setPreselectedStudentId] = useState<string | undefined>(undefined);
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [isAddProjectOpen, setIsAddProjectOpen] = useState(false);
+  const [selectedProjectToEdit, setSelectedProjectToEdit] = useState<Project | null>(null);
+  const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
 
   // Connect to Firestore real-time listeners across all devices
   useEffect(() => {
@@ -185,6 +190,22 @@ export default function App() {
     });
   };
 
+  const handleEditProject = (project: Project) => {
+    setSelectedProjectToEdit(project);
+    setIsEditProjectOpen(true);
+  };
+
+  const handleUpdateProject = async (projectId: string, updates: Partial<Project>) => {
+    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, ...updates } : p));
+    await updateProjectInDB(projectId, updates);
+  };
+
+  const handleToggleProjectStatus = async (projectId: string, currentStatus: 'active' | 'completed') => {
+    const nextStatus = currentStatus === 'completed' ? 'active' : 'completed';
+    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, status: nextStatus } : p));
+    await updateProjectInDB(projectId, { status: nextStatus });
+  };
+
   const handleDeleteProject = async (projectId: string) => {
     if (window.confirm('Voulez-vous supprimer ce projet ? Les versements enregistrés resteront conservés dans la caisse.')) {
       setProjects(prev => prev.filter(p => p.id !== projectId));
@@ -286,6 +307,9 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 flex-1 w-full">
+        {/* Piédestal des 3 meilleurs donateurs (avec grades 1er, 2ème, 3ème) */}
+        <PodiumSection students={studentsWithTotals} />
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Column: Élèves List */}
           <div className="lg:col-span-5 bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs">
@@ -470,7 +494,8 @@ export default function App() {
             contributions={contributions}
             currentRole={currentRole}
             onOpenAddProject={() => setIsAddProjectOpen(true)}
-            onDeleteProject={handleDeleteProject}
+            onEditProject={handleEditProject}
+            onToggleProjectStatus={handleToggleProjectStatus}
           />
         </div>
 
@@ -520,6 +545,17 @@ export default function App() {
         isOpen={isAddProjectOpen}
         onClose={() => setIsAddProjectOpen(false)}
         onAddProject={handleAddProject}
+      />
+
+      <EditProjectModal
+        isOpen={isEditProjectOpen}
+        onClose={() => {
+          setIsEditProjectOpen(false);
+          setSelectedProjectToEdit(null);
+        }}
+        project={selectedProjectToEdit}
+        onUpdateProject={handleUpdateProject}
+        onDeleteProject={handleDeleteProject}
       />
     </div>
   );
