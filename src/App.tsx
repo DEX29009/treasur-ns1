@@ -15,10 +15,11 @@ import {
   addProjectToDB, 
   updateProjectInDB,
   deleteProjectFromDB,
-  resetAllDataInDB
+  restoreFullBackupToDB
 } from './services/treasuryService';
 import { getInitialStudents } from './data/studentsData';
 import { getGradeForAmount, formatCurrency } from './utils/grades';
+import { loadLocalCache, saveLocalBackup } from './utils/backupService';
 import { ProfileSelectionView } from './components/ProfileSelectionView';
 import { PodiumSection } from './components/PodiumSection';
 import { GradesTableSection } from './components/GradesTableSection';
@@ -27,18 +28,20 @@ import { AddPaymentModal } from './components/AddPaymentModal';
 import { AddExpenseSimpleModal } from './components/AddExpenseSimpleModal';
 import { AddProjectModal } from './components/AddProjectModal';
 import { EditProjectModal } from './components/EditProjectModal';
-import { Plus, Minus, RotateCcw } from 'lucide-react';
+import { BackupModal } from './components/BackupModal';
+import { Plus, Minus, ShieldCheck } from 'lucide-react';
 
 export default function App() {
   // Always prompt for profile on first load and on every visit
   const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
   const [isChangingProfile, setIsChangingProfile] = useState(false);
 
-  // Real-time Cloud Firestore State
-  const [students, setStudents] = useState<Student[]>(() => getInitialStudents());
-  const [contributions, setContributions] = useState<Contribution[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
+  // Initialize immediately from persistent local cache to prevent ANY flash to 0!
+  const initialCache = useMemo(() => loadLocalCache(), []);
+  const [students, setStudents] = useState<Student[]>(initialCache.students);
+  const [contributions, setContributions] = useState<Contribution[]>(initialCache.contributions);
+  const [expenses, setExpenses] = useState<Expense[]>(initialCache.expenses);
+  const [projects, setProjects] = useState<Project[]>(initialCache.projects);
   const [isLoading, setIsLoading] = useState(true);
 
   const [searchStudent, setSearchStudent] = useState('');
@@ -51,6 +54,7 @@ export default function App() {
   const [isAddProjectOpen, setIsAddProjectOpen] = useState(false);
   const [selectedProjectToEdit, setSelectedProjectToEdit] = useState<Project | null>(null);
   const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
+  const [isBackupOpen, setIsBackupOpen] = useState(false);
 
   // Connect to Firestore real-time listeners across all devices
   useEffect(() => {
@@ -86,6 +90,13 @@ export default function App() {
       unsubProjects();
     };
   }, []);
+
+  // Automatic snapshot creation on every data change
+  useEffect(() => {
+    if (contributions.length > 0 || expenses.length > 0 || projects.length > 0) {
+      saveLocalBackup(students, contributions, expenses, projects, 'Automatique');
+    }
+  }, [students, contributions, expenses, projects]);
 
   // Handle role selection (temporary for this session, asked every time)
   const handleSelectRole = (role: UserRole) => {
@@ -149,7 +160,7 @@ export default function App() {
     });
   }, [sortedStudents, searchStudent, selectedGradeFilter]);
 
-  // Actions synchronized with Cloud Firestore
+  // Actions synchronized with Cloud Firestore & Local Backup
   const handleAddPayment = async (paymentData: Omit<Contribution, 'id' | 'receiptNumber'>) => {
     const student = studentsWithTotals.find(s => s.id === paymentData.studentId);
     if (!student) return;
@@ -162,7 +173,11 @@ export default function App() {
     };
 
     // Optimistic instant UI update
-    setContributions(prev => [newContribution, ...prev]);
+    const updatedContribs = [newContribution, ...contributions];
+    setContributions(updatedContribs);
+
+    // Save immediate local backup
+    saveLocalBackup(students, updatedContribs, expenses, projects, 'Versement ajouté');
 
     await addContributionToDB({
       ...paymentData,
@@ -175,7 +190,12 @@ export default function App() {
       ...expenseData,
       id: `temp-${Date.now()}`
     };
-    setExpenses(prev => [newExpense, ...prev]);
+    const updatedExpenses = [newExpense, ...expenses];
+    setExpenses(updatedExpenses);
+
+    // Save immediate local backup
+    saveLocalBackup(students, contributions, updatedExpenses, projects, 'Dépense enregistrée');
+
     await addExpenseToDB(expenseData);
   };
 
@@ -184,6 +204,15 @@ export default function App() {
     const dd = String(today.getDate()).padStart(2, '0');
     const mm = String(today.getMonth() + 1).padStart(2, '0');
     const yyyy = today.getFullYear();
+    const newProject: Project = {
+      ...projectData,
+      id: `prj-${Date.now()}`,
+      createdAt: `${dd}/${mm}/${yyyy}`
+    };
+    const updatedProjects = [newProject, ...projects];
+    setProjects(updatedProjects);
+
+    saveLocalBackup(students, contributions, expenses, updatedProjects, 'Projet créé');
     await addProjectToDB({
       ...projectData,
       createdAt: `${dd}/${mm}/${yyyy}`
@@ -196,32 +225,47 @@ export default function App() {
   };
 
   const handleUpdateProject = async (projectId: string, updates: Partial<Project>) => {
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, ...updates } : p));
+    const updatedProjects = projects.map(p => p.id === projectId ? { ...p, ...updates } : p);
+    setProjects(updatedProjects);
+    saveLocalBackup(students, contributions, expenses, updatedProjects, 'Projet modifié');
     await updateProjectInDB(projectId, updates);
   };
 
   const handleToggleProjectStatus = async (projectId: string, currentStatus: 'active' | 'completed') => {
-    const nextStatus = currentStatus === 'completed' ? 'active' : 'completed';
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, status: nextStatus } : p));
+    const nextStatus: 'active' | 'completed' = currentStatus === 'completed' ? 'active' : 'completed';
+    const updatedProjects = projects.map(p => p.id === projectId ? { ...p, status: nextStatus } : p);
+    setProjects(updatedProjects);
+    saveLocalBackup(students, contributions, expenses, updatedProjects, 'Statut projet mis à jour');
     await updateProjectInDB(projectId, { status: nextStatus });
   };
 
   const handleDeleteProject = async (projectId: string) => {
     if (window.confirm('Voulez-vous supprimer ce projet ? Les versements enregistrés resteront conservés dans la caisse.')) {
-      setProjects(prev => prev.filter(p => p.id !== projectId));
+      const updatedProjects = projects.filter(p => p.id !== projectId);
+      setProjects(updatedProjects);
+      saveLocalBackup(students, contributions, expenses, updatedProjects, 'Projet supprimé');
       await deleteProjectFromDB(projectId);
     }
   };
 
-  const handleResetToZero = async () => {
-    if (window.confirm('Êtes-vous sûr de vouloir remettre TOUTES les données à 0 sur TOUS les appareils ? Cette action effacera tous les versements, dépenses et projets de la base de données.')) {
-      setIsLoading(true);
-      await resetAllDataInDB();
-      setContributions([]);
-      setExpenses([]);
-      setProjects([]);
-      setIsLoading(false);
-    }
+  const handleRestoreData = async (data: {
+    students: Student[];
+    contributions: Contribution[];
+    expenses: Expense[];
+    projects: Project[];
+  }) => {
+    setIsLoading(true);
+    setStudents(data.students);
+    setContributions(data.contributions);
+    setExpenses(data.expenses);
+    setProjects(data.projects);
+
+    // Save locally
+    saveLocalBackup(data.students, data.contributions, data.expenses, data.projects, 'Restauration effectuée');
+
+    // Sync to Cloud Firestore
+    await restoreFullBackupToDB(data.students, data.contributions, data.expenses, data.projects);
+    setIsLoading(false);
   };
 
   // Show profile choice view if no role chosen or clicking "Changer de profil"
@@ -256,17 +300,29 @@ export default function App() {
               </h1>
             </div>
 
-            <div className="text-right">
-              <div className="flex items-center justify-end gap-1.5 text-xs font-semibold text-white">
-                <span>{currentRole === 'committee' ? '🔑' : '👛'}</span>
-                <span>{currentRole === 'committee' ? 'Membre du comité' : 'Élève'}</span>
+            <div className="text-right flex flex-col items-end">
+              <div className="flex items-center gap-2">
+                {currentRole === 'committee' && (
+                  <button
+                    onClick={() => setIsBackupOpen(true)}
+                    className="inline-flex items-center gap-1 text-[11px] bg-emerald-800/80 hover:bg-emerald-800 text-emerald-100 hover:text-white px-2.5 py-1 rounded-lg border border-emerald-600/50 transition-colors cursor-pointer"
+                    title="Centre de sauvegarde et restauration"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
+                    <span>Sauvegardes</span>
+                  </button>
+                )}
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-white">
+                  <span>{currentRole === 'committee' ? '🔑' : '👛'}</span>
+                  <span>{currentRole === 'committee' ? 'Membre du comité' : 'Élève'}</span>
+                </div>
               </div>
               <button
                 onClick={() => {
                   setCurrentRole(null);
                   setIsChangingProfile(true);
                 }}
-                className="text-[11px] text-emerald-200 hover:text-white underline mt-0.5 transition-colors cursor-pointer"
+                className="text-[11px] text-emerald-200 hover:text-white underline mt-1 transition-colors cursor-pointer"
               >
                 Changer de profil
               </button>
@@ -507,19 +563,28 @@ export default function App() {
         />
       </main>
 
-      {/* Footer with Reset to 0 Option */}
+      {/* Footer with Backup & Reset to 0 Options */}
       <footer className="mt-auto border-t border-slate-200 bg-white py-4 px-4 sm:px-6 text-center text-xs text-slate-500">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>Trésorerie NS1 · Synchronisée en temps réel via base de données Cloud</span>
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span>Trésorerie NS1 · Synchronisée en direct</span>
+            <span className="text-slate-300">|</span>
+            <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold border border-emerald-200">
+              Sauvegarde locale active
+            </span>
+          </div>
+
           {currentRole === 'committee' && (
-            <button
-              onClick={handleResetToZero}
-              className="flex items-center gap-1 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-              title="Remettre toutes les données à 0"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Réinitialiser la base à 0</span>
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsBackupOpen(true)}
+                className="flex items-center gap-1.5 text-emerald-700 hover:text-emerald-900 font-semibold transition-colors cursor-pointer"
+                title="Gérer les sauvegardes"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Sauvegardes & Restauration</span>
+              </button>
+            </div>
           )}
         </div>
       </footer>
@@ -556,6 +621,16 @@ export default function App() {
         project={selectedProjectToEdit}
         onUpdateProject={handleUpdateProject}
         onDeleteProject={handleDeleteProject}
+      />
+
+      <BackupModal
+        isOpen={isBackupOpen}
+        onClose={() => setIsBackupOpen(false)}
+        students={studentsWithTotals}
+        contributions={contributions}
+        expenses={expenses}
+        projects={projects}
+        onRestoreData={handleRestoreData}
       />
     </div>
   );

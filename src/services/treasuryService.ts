@@ -171,3 +171,45 @@ export async function resetAllDataInDB() {
   // Also clear any localStorage cache
   localStorage.clear();
 }
+
+// Restore a complete backup to Cloud Firestore across all devices
+export async function restoreFullBackupToDB(
+  students: Student[],
+  contributions: Contribution[],
+  expenses: Expense[],
+  projects: Project[]
+) {
+  // 1. Write students
+  const batch1 = writeBatch(db);
+  for (const s of students) {
+    batch1.set(doc(db, STUDENTS_COL, s.id), cleanData(s));
+  }
+  await batch1.commit();
+
+  // 2. Clear old contributions and set restored ones
+  const oldContribSnap = await getDocs(collection(db, CONTRIBUTIONS_COL));
+  const batch2 = writeBatch(db);
+  oldContribSnap.forEach(d => batch2.delete(d.ref));
+  for (const c of contributions) {
+    batch2.set(doc(db, CONTRIBUTIONS_COL, c.id), cleanData(c));
+  }
+  await batch2.commit();
+
+  // 3. Clear old expenses and set restored ones
+  const oldExpSnap = await getDocs(collection(db, EXPENSES_COL));
+  const batch3 = writeBatch(db);
+  oldExpSnap.forEach(d => batch3.delete(d.ref));
+  for (const e of expenses) {
+    batch3.set(doc(db, EXPENSES_COL, e.id), cleanData(e));
+  }
+  await batch3.commit();
+
+  // 4. Clear old projects and set restored ones
+  const oldProjSnap = await getDocs(collection(db, PROJECTS_COL));
+  const batch4 = writeBatch(db);
+  oldProjSnap.forEach(d => batch4.delete(d.ref));
+  for (const p of projects) {
+    batch4.set(doc(db, PROJECTS_COL, p.id), cleanData(p));
+  }
+  await batch4.commit();
+}

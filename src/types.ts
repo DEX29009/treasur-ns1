@@ -55,3 +55,23 @@ export interface GradeTier {
   description: string;
   perks: string;
 }
+
+export interface BackupSnapshot {
+  id: string;
+  timestamp: number;
+  dateFormatted: string;
+  label: string;
+  studentsCount: number;
+  contributionsCount: number;
+  expensesCount: number;
+  projectsCount: number;
+  totalIn: number;
+  totalOut: number;
+  balance: number;
+  data: {
+    students: Student[];
+    contributions: Contribution[];
+    expenses: Expense[];
+    projects: Project[];
+  };
+}
