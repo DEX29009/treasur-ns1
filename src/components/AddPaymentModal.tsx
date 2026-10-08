@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Student, Contribution, Project } from '../types';
-import { formatCurrency } from '../utils/grades';
+import { formatCurrency, getGradeForAmount } from '../utils/grades';
 import { X, CheckCircle2 } from 'lucide-react';
 
 interface AddPaymentModalProps {
@@ -56,6 +56,10 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
   const selectedStudent = students.find(s => s.id === studentId);
   const selectedProject = projects.find(p => p.id === selectedProjectId);
   const amount = parseFloat(amountStr) || 0;
+
+  const currentGrade = selectedStudent ? getGradeForAmount(selectedStudent.totalContributed) : null;
+  const newTotal = (selectedStudent?.totalContributed || 0) + amount;
+  const newGrade = getGradeForAmount(newTotal);
 
   const handleNextStep = (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,11 +139,25 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
                 >
                   {students.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name}
+                      {s.name} ({formatCurrency(s.totalContributed)})
                     </option>
                   ))}
                 </select>
               </div>
+
+              {/* Current grade badge and preview */}
+              {selectedStudent && currentGrade && (
+                <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-600">
+                    Grade actuel : <strong className="text-slate-800">{currentGrade.emoji} {currentGrade.name}</strong>
+                  </span>
+                  {amount > 0 && (
+                    <span className="font-semibold text-emerald-700">
+                      → {newGrade.emoji} {newGrade.name}
+                    </span>
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -209,11 +227,6 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
                     </option>
                   ))}
                 </select>
-                {projects.length === 0 && (
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Aucun projet créé pour l'instant. Vous pouvez créer des projets depuis la caisse.
-                  </p>
-                )}
               </div>
 
               {error && (
@@ -264,6 +277,21 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
                 <span className="text-slate-500 font-medium">Montant :</span>
                 <span className="font-mono font-black text-emerald-600 text-sm">
                   +{formatCurrency(amount)}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+                <span className="text-slate-500 font-medium">Nouveau total élève :</span>
+                <span className="font-mono font-bold text-slate-900">
+                  {formatCurrency(newTotal)}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+                <span className="text-slate-500 font-medium">Grade atteint :</span>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${newGrade.badgeColor}`}>
+                  <span>{newGrade.emoji}</span>
+                  <span>{newGrade.name}</span>
                 </span>
               </div>
 

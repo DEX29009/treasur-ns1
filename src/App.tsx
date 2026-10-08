@@ -96,21 +96,38 @@ export default function App() {
 
   // Calculations
   const totalIn = useMemo(() => {
-    return contributions.reduce((sum, c) => sum + c.amount, 0);
+    return contributions.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
   }, [contributions]);
 
   const totalOut = useMemo(() => {
-    return expenses.reduce((sum, e) => sum + e.amount, 0);
+    return expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
   }, [expenses]);
 
   const balance = useMemo(() => {
     return totalIn - totalOut;
   }, [totalIn, totalOut]);
 
+  // Dynamically compute each student's total directly from contributions
+  const studentsWithTotals = useMemo(() => {
+    return students.map(student => {
+      const studentContribs = contributions.filter(
+        c => c.studentId === student.id || 
+             (c.studentName && student.name && c.studentName.toLowerCase().trim() === student.name.toLowerCase().trim())
+      );
+      const sumFromContribs = studentContribs.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+      const finalTotal = Math.max(Number(student.totalContributed || 0), sumFromContribs);
+      return {
+        ...student,
+        totalContributed: finalTotal,
+        contributionsCount: Math.max(student.contributionsCount || 0, studentContribs.length)
+      };
+    });
+  }, [students, contributions]);
+
   // Sorted students list
   const sortedStudents = useMemo(() => {
-    return [...students].sort((a, b) => b.totalContributed - a.totalContributed);
-  }, [students]);
+    return [...studentsWithTotals].sort((a, b) => b.totalContributed - a.totalContributed);
+  }, [studentsWithTotals]);
 
   // Filtered students list
   const filteredStudents = useMemo(() => {
@@ -120,7 +137,7 @@ export default function App() {
 
       if (selectedGradeFilter) {
         const grade = getGradeForAmount(student.totalContributed);
-        if (grade?.id !== selectedGradeFilter) return false;
+        if (grade.id !== selectedGradeFilter) return false;
       }
 
       return true;
@@ -129,10 +146,19 @@ export default function App() {
 
   // Actions synchronized with Cloud Firestore
   const handleAddPayment = async (paymentData: Omit<Contribution, 'id' | 'receiptNumber'>) => {
-    const student = students.find(s => s.id === paymentData.studentId);
+    const student = studentsWithTotals.find(s => s.id === paymentData.studentId);
     if (!student) return;
 
     const receiptNumber = `REC-${String(contributions.length + 1).padStart(3, '0')}`;
+    const newContribution: Contribution = {
+      ...paymentData,
+      id: `temp-${Date.now()}`,
+      receiptNumber
+    };
+
+    // Optimistic instant UI update
+    setContributions(prev => [newContribution, ...prev]);
+
     await addContributionToDB({
       ...paymentData,
       receiptNumber
@@ -140,6 +166,11 @@ export default function App() {
   };
 
   const handleAddExpense = async (expenseData: Omit<Expense, 'id'>) => {
+    const newExpense: Expense = {
+      ...expenseData,
+      id: `temp-${Date.now()}`
+    };
+    setExpenses(prev => [newExpense, ...prev]);
     await addExpenseToDB(expenseData);
   };
 
@@ -156,6 +187,7 @@ export default function App() {
 
   const handleDeleteProject = async (projectId: string) => {
     if (window.confirm('Voulez-vous supprimer ce projet ? Les versements enregistrés resteront conservés dans la caisse.')) {
+      setProjects(prev => prev.filter(p => p.id !== projectId));
       await deleteProjectFromDB(projectId);
     }
   };
@@ -164,6 +196,9 @@ export default function App() {
     if (window.confirm('Êtes-vous sûr de vouloir remettre TOUTES les données à 0 sur TOUS les appareils ? Cette action effacera tous les versements, dépenses et projets de la base de données.')) {
       setIsLoading(true);
       await resetAllDataInDB();
+      setContributions([]);
+      setExpenses([]);
+      setProjects([]);
       setIsLoading(false);
     }
   };
@@ -256,7 +291,7 @@ export default function App() {
           <div className="lg:col-span-5 bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs">
             <div className="flex items-center justify-between gap-2 mb-3">
               <h2 className="text-base font-bold text-slate-900">
-                Élèves ({students.length})
+                Élèves ({studentsWithTotals.length})
               </h2>
               <div className="relative">
                 <input
@@ -312,12 +347,14 @@ export default function App() {
                         <span className="font-semibold text-slate-800 truncate">
                           {student.name}
                         </span>
-                        {grade && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200/80 shrink-0">
-                            <span>{grade.emoji}</span>
-                            <span>{grade.name}</span>
-                          </span>
-                        )}
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border shrink-0 ${
+                          student.totalContributed > 0
+                            ? grade.badgeColor
+                            : 'bg-slate-100 text-slate-500 border-slate-200'
+                        }`}>
+                          <span>{grade.emoji}</span>
+                          <span>{grade.name}</span>
+                        </span>
                       </div>
 
                       <div className="text-right shrink-0 font-bold text-slate-900 font-mono">
@@ -439,7 +476,7 @@ export default function App() {
 
         {/* Tableau des grades Section */}
         <GradesTableSection
-          students={students}
+          students={studentsWithTotals}
           selectedGradeId={selectedGradeFilter}
           onFilterByGrade={(gradeId) => setSelectedGradeFilter(gradeId)}
         />
@@ -466,7 +503,7 @@ export default function App() {
       <AddPaymentModal
         isOpen={isAddPaymentOpen}
         onClose={() => setIsAddPaymentOpen(false)}
-        students={students}
+        students={studentsWithTotals}
         projects={projects}
         preselectedStudentId={preselectedStudentId}
         onAddPayment={handleAddPayment}
