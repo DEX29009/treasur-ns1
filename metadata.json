@@ -1,0 +1,6 @@
+{
+  "name": "Trésorerie NS1 - Gestion de Caisse & Cotisations",
+  "description": "Plateforme officielle de trésorerie en temps réel pour la classe de NS1 : suivi des cotisations par élève, grades et classement, dépenses sécurisées par code PIN et solde de caisse.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

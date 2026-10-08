@@ -1,0 +1,84 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "Un élève de la classe de NS1",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "totalContributed": { "type": "number" },
+        "contributionsCount": { "type": "number" },
+        "lastContributionDate": { "type": "string" }
+      },
+      "required": ["id", "name", "totalContributed", "contributionsCount"]
+    },
+    "Contribution": {
+      "title": "Contribution",
+      "description": "Un versement de cotisation pour la classe",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "motif": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "recordedBy": { "type": "string" },
+        "receiptNumber": { "type": "string" },
+        "projectId": { "type": "string" },
+        "projectName": { "type": "string" }
+      },
+      "required": ["id", "studentId", "studentName", "amount", "date", "motif"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Une dépense effectuée par la classe",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "motif": { "type": "string" },
+        "category": { "type": "string" },
+        "beneficiary": { "type": "string" },
+        "authorizedBy": { "type": "string" },
+        "pinVerified": { "type": "boolean" }
+      },
+      "required": ["id", "amount", "date", "motif"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Un projet ou une cagnotte de la classe",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "hasTarget": { "type": "boolean" },
+        "targetAmount": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "hasTarget", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Collection des 38 élèves de NS1"
+    },
+    "/contributions/{contributionId}": {
+      "schema": { "$ref": "#/entities/Contribution" },
+      "description": "Historique des versements"
+    },
+    "/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Historique des dépenses"
+    },
+    "/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/Project" },
+      "description": "Projets de la classe"
+    }
+  }
+}
