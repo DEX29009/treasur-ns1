@@ -46,8 +46,7 @@ export function getInitialStudents(): Student[] {
     id: `std-${index + 1}`,
     name,
     totalContributed: 0,
-    contributionsCount: 0,
-    lastContributionDate: undefined
+    contributionsCount: 0
   }));
 }
 

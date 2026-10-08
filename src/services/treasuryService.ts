@@ -2,7 +2,6 @@ import {
   collection, 
   doc, 
   setDoc, 
-  addDoc, 
   deleteDoc, 
   getDocs, 
   onSnapshot, 
@@ -18,6 +17,17 @@ const CONTRIBUTIONS_COL = 'contributions';
 const EXPENSES_COL = 'expenses';
 const PROJECTS_COL = 'projects';
 
+// Utility: removes any undefined fields before saving to Firestore
+function cleanData<T extends Record<string, any>>(obj: T): any {
+  const result: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 // Subscribe in real-time to students
 export function subscribeToStudents(callback: (students: Student[]) => void) {
   const colRef = collection(db, STUDENTS_COL);
@@ -27,7 +37,7 @@ export function subscribeToStudents(callback: (students: Student[]) => void) {
       const initial = getInitialStudents();
       const batch = writeBatch(db);
       for (const s of initial) {
-        batch.set(doc(db, STUDENTS_COL, s.id), s);
+        batch.set(doc(db, STUDENTS_COL, s.id), cleanData(s));
       }
       await batch.commit();
       callback(initial);
@@ -46,7 +56,7 @@ export function subscribeToContributions(callback: (contributions: Contribution[
   const q = query(collection(db, CONTRIBUTIONS_COL));
   return onSnapshot(q, (snapshot) => {
     const list = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Contribution));
-    // Sort descending by id/timestamp
+    // Sort descending by timestamp/id
     list.sort((a, b) => b.id.localeCompare(a.id));
     callback(list);
   }, (err) => {
@@ -91,7 +101,7 @@ export async function addContributionToDB(
     ...contribution,
     id: newRef.id
   };
-  await setDoc(newRef, newContribution);
+  await setDoc(newRef, cleanData(newContribution));
 
   // Update student in Firestore
   const updatedStudent: Student = {
@@ -100,7 +110,7 @@ export async function addContributionToDB(
     contributionsCount: currentStudent.contributionsCount + 1,
     lastContributionDate: contribution.date
   };
-  await setDoc(doc(db, STUDENTS_COL, currentStudent.id), updatedStudent, { merge: true });
+  await setDoc(doc(db, STUDENTS_COL, currentStudent.id), cleanData(updatedStudent), { merge: true });
 }
 
 // Add an expense to Firestore
@@ -110,7 +120,7 @@ export async function addExpenseToDB(expense: Omit<Expense, 'id'>) {
     ...expense,
     id: newRef.id
   };
-  await setDoc(newRef, newExpense);
+  await setDoc(newRef, cleanData(newExpense));
 }
 
 // Add a project to Firestore
@@ -120,7 +130,7 @@ export async function addProjectToDB(project: Omit<Project, 'id'>) {
     ...project,
     id: newRef.id
   };
-  await setDoc(newRef, newProject);
+  await setDoc(newRef, cleanData(newProject));
 }
 
 // Delete a project from Firestore
@@ -135,7 +145,7 @@ export async function resetAllDataInDB() {
   // 1. Reset all 38 students to 0
   const initialStudents = getInitialStudents();
   for (const s of initialStudents) {
-    batch.set(doc(db, STUDENTS_COL, s.id), s);
+    batch.set(doc(db, STUDENTS_COL, s.id), cleanData(s));
   }
 
   // 2. Clear all contributions
