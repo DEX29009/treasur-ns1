@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Project } from '../types';
-import { X, Target, Calendar, CheckCircle2, RotateCcw } from 'lucide-react';
+import { X, Target, Calendar, CheckCircle2, RotateCcw, Coins } from 'lucide-react';
 
 interface EditProjectModalProps {
   isOpen: boolean;
@@ -22,7 +22,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
   const [hasTarget, setHasTarget] = useState(false);
   const [targetAmountStr, setTargetAmountStr] = useState('');
   const [deadline, setDeadline] = useState('');
-  const [status, setStatus] = useState<'active' | 'completed'>('active');
+  const [status, setStatus] = useState<'active' | 'completed' | 'paid'>('active');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -69,6 +69,12 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
   };
 
   const handleToggleStatus = () => {
+    if (status === 'paid') {
+      if (window.confirm('Ce projet a été marqué comme payé. Voulez-vous le rouvrir en statut actif ?')) {
+        setStatus('active');
+      }
+      return;
+    }
     const nextStatus = status === 'active' ? 'completed' : 'active';
     setStatus(nextStatus);
   };
@@ -92,7 +98,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
           </h2>
         </div>
         <p className="text-xs text-slate-500 mb-4">
-          Ajustez les détails, la date limite ou mettez fin au projet
+          Ajustez les détails, la date limite ou le statut du projet
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-3.5 text-left text-xs">
@@ -190,26 +196,37 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
             )}
           </div>
 
-          {/* Statut du projet : Actif ou Terminé (Bouton pour mettre fin au projet) */}
+          {/* Statut du projet : Actif, Terminé ou Payé */}
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
             <div>
               <span className="font-semibold text-slate-800 block">
                 Statut du projet
               </span>
               <span className="text-[11px] text-slate-500">
-                {status === 'completed' ? 'Ce projet est clôturé et terminé.' : 'Ce projet est actuellement en cours.'}
+                {status === 'paid' 
+                  ? 'Ce projet a été payé et ses fonds retirés.'
+                  : status === 'completed' 
+                    ? 'Ce projet est clôturé et terminé.' 
+                    : 'Ce projet est actuellement en cours.'}
               </span>
             </div>
             <button
               type="button"
               onClick={handleToggleStatus}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
-                status === 'completed'
-                  ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300'
-                  : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+                status === 'paid'
+                  ? 'bg-amber-100 text-amber-900 hover:bg-amber-200 border border-amber-300'
+                  : status === 'completed'
+                    ? 'bg-slate-200 text-slate-800 hover:bg-slate-300 border border-slate-300'
+                    : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
               }`}
             >
-              {status === 'completed' ? (
+              {status === 'paid' ? (
+                <>
+                  <Coins className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Statut : Payé</span>
+                </>
+              ) : status === 'completed' ? (
                 <>
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Rouvrir</span>

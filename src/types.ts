@@ -15,7 +15,9 @@ export interface Project {
   hasTarget: boolean;
   targetAmount?: number;
   deadline?: string;
-  status?: 'active' | 'completed';
+  status?: 'active' | 'completed' | 'paid';
+  paidAt?: string;
+  paidAmount?: number;
   createdAt: string;
 }
 
@@ -43,6 +45,7 @@ export interface Expense {
   authorizedBy: string;
   pinVerified: boolean;
   projectId?: string;
+  projectName?: string;
 }
 
 export interface GradeTier {

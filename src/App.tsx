@@ -51,6 +51,7 @@ export default function App() {
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
   const [preselectedStudentId, setPreselectedStudentId] = useState<string | undefined>(undefined);
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
+  const [preselectedProjectIdForExpense, setPreselectedProjectIdForExpense] = useState<string | undefined>(undefined);
   const [isAddProjectOpen, setIsAddProjectOpen] = useState(false);
   const [selectedProjectToEdit, setSelectedProjectToEdit] = useState<Project | null>(null);
   const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
@@ -185,7 +186,7 @@ export default function App() {
     }, student);
   };
 
-  const handleAddExpense = async (expenseData: Omit<Expense, 'id'>) => {
+  const handleAddExpense = async (expenseData: Omit<Expense, 'id'>, projectToMarkPaid?: string) => {
     const newExpense: Expense = {
       ...expenseData,
       id: `temp-${Date.now()}`
@@ -193,8 +194,28 @@ export default function App() {
     const updatedExpenses = [newExpense, ...expenses];
     setExpenses(updatedExpenses);
 
+    let updatedProjects = projects;
+    if (projectToMarkPaid) {
+      updatedProjects = projects.map(p => 
+        p.id === projectToMarkPaid 
+          ? { 
+              ...p, 
+              status: 'paid' as const, 
+              paidAt: expenseData.date, 
+              paidAmount: expenseData.amount 
+            } 
+          : p
+      );
+      setProjects(updatedProjects);
+      await updateProjectInDB(projectToMarkPaid, { 
+        status: 'paid', 
+        paidAt: expenseData.date, 
+        paidAmount: expenseData.amount 
+      });
+    }
+
     // Save immediate local backup
-    saveLocalBackup(students, contributions, updatedExpenses, projects, 'Dépense enregistrée');
+    saveLocalBackup(students, contributions, updatedExpenses, updatedProjects, 'Dépense enregistrée');
 
     await addExpenseToDB(expenseData);
   };
@@ -206,6 +227,7 @@ export default function App() {
     const yyyy = today.getFullYear();
     const newProject: Project = {
       ...projectData,
+      status: 'active',
       id: `prj-${Date.now()}`,
       createdAt: `${dd}/${mm}/${yyyy}`
     };
@@ -215,6 +237,7 @@ export default function App() {
     saveLocalBackup(students, contributions, expenses, updatedProjects, 'Projet créé');
     await addProjectToDB({
       ...projectData,
+      status: 'active',
       createdAt: `${dd}/${mm}/${yyyy}`
     });
   };
@@ -231,7 +254,17 @@ export default function App() {
     await updateProjectInDB(projectId, updates);
   };
 
-  const handleToggleProjectStatus = async (projectId: string, currentStatus: 'active' | 'completed') => {
+  const handleToggleProjectStatus = async (projectId: string, currentStatus: 'active' | 'completed' | 'paid') => {
+    if (currentStatus === 'paid') {
+      if (window.confirm('Ce projet est marqué comme payé. Voulez-vous le rouvrir en statut actif ?')) {
+        const updatedProjects = projects.map(p => p.id === projectId ? { ...p, status: 'active' as const } : p);
+        setProjects(updatedProjects);
+        saveLocalBackup(students, contributions, expenses, updatedProjects, 'Statut projet mis à jour');
+        await updateProjectInDB(projectId, { status: 'active' });
+      }
+      return;
+    }
+
     const nextStatus: 'active' | 'completed' = currentStatus === 'completed' ? 'active' : 'completed';
     const updatedProjects = projects.map(p => p.id === projectId ? { ...p, status: nextStatus } : p);
     setProjects(updatedProjects);
@@ -507,7 +540,10 @@ export default function App() {
                 </h2>
                 {currentRole === 'committee' && (
                   <button
-                    onClick={() => setIsAddExpenseOpen(true)}
+                    onClick={() => {
+                      setPreselectedProjectIdForExpense(undefined);
+                      setIsAddExpenseOpen(true);
+                    }}
                     className="flex items-center gap-1 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                   >
                     <Minus className="w-3.5 h-3.5" />
@@ -525,8 +561,13 @@ export default function App() {
                   expenses.map((e) => (
                     <div key={e.id} className="py-3 flex items-center justify-between text-xs">
                       <div>
-                        <div className="font-bold text-slate-900">
-                          {e.motif}
+                        <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                          <span>{e.motif}</span>
+                          {e.projectName && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 font-medium border border-amber-200 text-[10px]">
+                              🎯 {e.projectName}
+                            </span>
+                          )}
                         </div>
                         <div className="text-[11px] text-slate-400 mt-0.5">
                           {e.date} · {e.authorizedBy || 'Comité NS1'}
@@ -552,6 +593,10 @@ export default function App() {
             onOpenAddProject={() => setIsAddProjectOpen(true)}
             onEditProject={handleEditProject}
             onToggleProjectStatus={handleToggleProjectStatus}
+            onWithdrawFunds={(projectId) => {
+              setPreselectedProjectIdForExpense(projectId);
+              setIsAddExpenseOpen(true);
+            }}
           />
         </div>
 
@@ -563,7 +608,7 @@ export default function App() {
         />
       </main>
 
-      {/* Footer with Backup & Reset to 0 Options */}
+      {/* Footer with Backup Center */}
       <footer className="mt-auto border-t border-slate-200 bg-white py-4 px-4 sm:px-6 text-center text-xs text-slate-500">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -575,16 +620,14 @@ export default function App() {
           </div>
 
           {currentRole === 'committee' && (
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setIsBackupOpen(true)}
-                className="flex items-center gap-1.5 text-emerald-700 hover:text-emerald-900 font-semibold transition-colors cursor-pointer"
-                title="Gérer les sauvegardes"
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Sauvegardes & Restauration</span>
-              </button>
-            </div>
+            <button
+              onClick={() => setIsBackupOpen(true)}
+              className="flex items-center gap-1.5 text-emerald-700 hover:text-emerald-900 font-semibold transition-colors cursor-pointer"
+              title="Gérer les sauvegardes"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Sauvegardes & Restauration</span>
+            </button>
           )}
         </div>
       </footer>
@@ -601,8 +644,14 @@ export default function App() {
 
       <AddExpenseSimpleModal
         isOpen={isAddExpenseOpen}
-        onClose={() => setIsAddExpenseOpen(false)}
+        onClose={() => {
+          setIsAddExpenseOpen(false);
+          setPreselectedProjectIdForExpense(undefined);
+        }}
         availableBalance={balance}
+        projects={projects}
+        contributions={contributions}
+        preselectedProjectId={preselectedProjectIdForExpense}
         onAddExpense={handleAddExpense}
       />
 

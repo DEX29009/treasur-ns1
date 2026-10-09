@@ -1,7 +1,7 @@
 import React from 'react';
 import { Project, Contribution, UserRole } from '../types';
 import { formatCurrency } from '../utils/grades';
-import { Target, Plus, Pencil, CheckCircle2, RotateCcw, Calendar, Flag } from 'lucide-react';
+import { Target, Plus, Pencil, CheckCircle2, RotateCcw, Calendar, Flag, ArrowDownToLine, Coins } from 'lucide-react';
 
 interface ProjectsSectionProps {
   projects: Project[];
@@ -9,7 +9,8 @@ interface ProjectsSectionProps {
   currentRole: UserRole | null;
   onOpenAddProject: () => void;
   onEditProject: (project: Project) => void;
-  onToggleProjectStatus: (projectId: string, currentStatus: 'active' | 'completed') => void;
+  onToggleProjectStatus: (projectId: string, currentStatus: 'active' | 'completed' | 'paid') => void;
+  onWithdrawFunds?: (projectId: string) => void;
 }
 
 export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
@@ -18,7 +19,8 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
   currentRole,
   onOpenAddProject,
   onEditProject,
-  onToggleProjectStatus
+  onToggleProjectStatus,
+  onWithdrawFunds
 }) => {
   return (
     <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs mb-6">
@@ -29,7 +31,7 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
             <span>Projets de la classe</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Cagnottes, objectifs financiers et échéances de la promotion
+            Cagnottes, objectifs financiers, échéances et décaissements
           </p>
         </div>
 
@@ -68,14 +70,17 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
             const progressPercent = hasTarget ? Math.min(100, Math.round((totalCollected / targetAmount) * 100)) : 0;
             const isTargetReached = hasTarget && totalCollected >= targetAmount;
             const isCompleted = project.status === 'completed';
+            const isPaid = project.status === 'paid';
 
             return (
               <div
                 key={project.id}
                 className={`p-3.5 border rounded-xl space-y-2 relative transition-all ${
-                  isCompleted 
-                    ? 'bg-slate-100/70 border-slate-300 opacity-90' 
-                    : 'bg-slate-50/70 border-slate-200/90'
+                  isPaid
+                    ? 'bg-amber-50/40 border-amber-300/80 shadow-2xs'
+                    : isCompleted 
+                      ? 'bg-slate-100/70 border-slate-300 opacity-90' 
+                      : 'bg-slate-50/70 border-slate-200/90'
                 }`}
               >
                 {/* Header with Title and Committee Actions (Pencil & End Project button) */}
@@ -85,7 +90,14 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
                       <h3 className="font-bold text-sm text-slate-900 truncate">
                         {project.name}
                       </h3>
-                      {isCompleted ? (
+
+                      {/* Status Badges */}
+                      {isPaid ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
+                          <Coins className="w-3 h-3 text-amber-700" />
+                          <span>Payé</span>
+                        </span>
+                      ) : isCompleted ? (
                         <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700 border border-slate-300">
                           <CheckCircle2 className="w-3 h-3 text-slate-600" />
                           <span>Projet terminé</span>
@@ -107,25 +119,27 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
                   {currentRole === 'committee' && (
                     <div className="flex items-center gap-1 shrink-0">
                       {/* Button to End / Reopen Project */}
-                      <button
-                        type="button"
-                        onClick={() => onToggleProjectStatus(project.id, project.status || 'active')}
-                        className={`p-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1 ${
-                          isCompleted
-                            ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200 bg-slate-100'
-                            : 'text-rose-600 hover:text-rose-800 hover:bg-rose-100 bg-rose-50'
-                        }`}
-                        title={isCompleted ? 'Rouvrir le projet' : 'Mettre fin au projet'}
-                      >
-                        {isCompleted ? (
-                          <RotateCcw className="w-3.5 h-3.5" />
-                        ) : (
-                          <Flag className="w-3.5 h-3.5" />
-                        )}
-                        <span className="text-[10px] hidden sm:inline">
-                          {isCompleted ? 'Rouvrir' : 'Mettre fin'}
-                        </span>
-                      </button>
+                      {!isPaid && (
+                        <button
+                          type="button"
+                          onClick={() => onToggleProjectStatus(project.id, project.status || 'active')}
+                          className={`p-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1 ${
+                            isCompleted
+                              ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200 bg-slate-100'
+                              : 'text-rose-600 hover:text-rose-800 hover:bg-rose-100 bg-rose-50'
+                          }`}
+                          title={isCompleted ? 'Rouvrir le projet' : 'Mettre fin au projet'}
+                        >
+                          {isCompleted ? (
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          ) : (
+                            <Flag className="w-3.5 h-3.5" />
+                          )}
+                          <span className="text-[10px] hidden sm:inline">
+                            {isCompleted ? 'Rouvrir' : 'Mettre fin'}
+                          </span>
+                        </button>
+                      )}
 
                       {/* Pencil Icon (Crayon en haut a droite pour modifier) */}
                       <button
@@ -151,8 +165,10 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
                 {/* Financial figures */}
                 <div className="flex items-baseline justify-between pt-1">
                   <div>
-                    <span className="text-xs text-slate-500">Collecté : </span>
-                    <span className="font-bold font-mono text-emerald-700 text-sm">
+                    <span className="text-xs text-slate-500">
+                      {isPaid ? 'Total décaissé : ' : 'Collecté : '}
+                    </span>
+                    <span className={`font-bold font-mono text-sm ${isPaid ? 'text-amber-800' : 'text-emerald-700'}`}>
                       {formatCurrency(totalCollected)}
                     </span>
                   </div>
@@ -174,7 +190,11 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
                     <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-300 ${
-                          isTargetReached ? 'bg-emerald-600' : 'bg-emerald-500'
+                          isPaid
+                            ? 'bg-amber-600'
+                            : isTargetReached 
+                              ? 'bg-emerald-600' 
+                              : 'bg-emerald-500'
                         }`}
                         style={{ width: `${progressPercent}%` }}
                       />
@@ -187,9 +207,36 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
                           Objectif atteint !
                         </span>
                       ) : (
-                        <span>Reste {formatCurrency(Math.max(0, targetAmount - totalCollected))}</span>
+                        <span>
+                          {isPaid ? 'Projet soldé' : `Reste ${formatCurrency(Math.max(0, targetAmount - totalCollected))}`}
+                        </span>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {/* Direct Action for Committee: Retirer les fonds if completed & not paid */}
+                {currentRole === 'committee' && isCompleted && !isPaid && totalCollected > 0 && onWithdrawFunds && (
+                  <div className="pt-2 border-t border-slate-200/80 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => onWithdrawFunds(project.id)}
+                      className="px-3 py-1.5 bg-rose-700 hover:bg-rose-800 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    >
+                      <ArrowDownToLine className="w-3.5 h-3.5" />
+                      <span>Retirer les fonds ({formatCurrency(totalCollected)})</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Information if already paid */}
+                {isPaid && (
+                  <div className="p-2 bg-amber-50 rounded-lg border border-amber-200 text-[11px] text-amber-900 flex items-center justify-between">
+                    <span className="flex items-center gap-1 font-semibold">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Fonds retirés par la caisse</span>
+                    </span>
+                    {project.paidAt && <span>le {project.paidAt}</span>}
                   </div>
                 )}
 

@@ -44,7 +44,9 @@
         "category": { "type": "string" },
         "beneficiary": { "type": "string" },
         "authorizedBy": { "type": "string" },
-        "pinVerified": { "type": "boolean" }
+        "pinVerified": { "type": "boolean" },
+        "projectId": { "type": "string" },
+        "projectName": { "type": "string" }
       },
       "required": ["id", "amount", "date", "motif"]
     },
@@ -59,7 +61,9 @@
         "hasTarget": { "type": "boolean" },
         "targetAmount": { "type": "number" },
         "deadline": { "type": "string" },
-        "status": { "type": "string", "enum": ["active", "completed"] },
+        "status": { "type": "string", "enum": ["active", "completed", "paid"] },
+        "paidAt": { "type": "string" },
+        "paidAmount": { "type": "number" },
         "createdAt": { "type": "string" }
       },
       "required": ["id", "name", "hasTarget", "createdAt"]
