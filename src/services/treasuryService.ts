@@ -106,11 +106,38 @@ export async function addContributionToDB(
   // Update student in Firestore
   const updatedStudent: Student = {
     ...currentStudent,
-    totalContributed: currentStudent.totalContributed + contribution.amount,
-    contributionsCount: currentStudent.contributionsCount + 1,
+    totalContributed: (currentStudent.totalContributed || 0) + contribution.amount,
+    contributionsCount: (currentStudent.contributionsCount || 0) + 1,
     lastContributionDate: contribution.date
   };
   await setDoc(doc(db, STUDENTS_COL, currentStudent.id), cleanData(updatedStudent), { merge: true });
+}
+
+// Delete / Cancel a contribution from Firestore and update student total
+export async function deleteContributionFromDB(
+  contributionId: string,
+  studentId: string,
+  remainingStudentContributions: Contribution[]
+) {
+  if (!contributionId.startsWith('temp-')) {
+    await deleteDoc(doc(db, CONTRIBUTIONS_COL, contributionId));
+  }
+
+  const newTotal = remainingStudentContributions.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+  const newCount = remainingStudentContributions.length;
+  const lastDate = newCount > 0 ? remainingStudentContributions[0].date : undefined;
+
+  const updatePayload: Record<string, unknown> = {
+    totalContributed: newTotal,
+    contributionsCount: newCount
+  };
+  if (lastDate) {
+    updatePayload.lastContributionDate = lastDate;
+  }
+
+  if (studentId && !studentId.startsWith('temp-')) {
+    await setDoc(doc(db, STUDENTS_COL, studentId), cleanData(updatePayload), { merge: true });
+  }
 }
 
 // Add an expense to Firestore

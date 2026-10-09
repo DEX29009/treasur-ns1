@@ -157,3 +157,55 @@ export function formatCurrency(amount: number): string {
   const num = Number(amount) || 0;
   return `${new Intl.NumberFormat('fr-FR').format(num)} HTG`;
 }
+
+/**
+ * Parses a date string (supports DD/MM/YYYY and standard date strings)
+ * into a millisecond timestamp for accurate chronological sorting.
+ */
+export function parseContributionDate(dateStr?: string): number {
+  if (!dateStr) return 0;
+  const parts = dateStr.trim().split('/');
+  if (parts.length === 3) {
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const year = parseInt(parts[2], 10);
+    if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+      return new Date(year, month, day).getTime();
+    }
+  }
+  const parsed = Date.parse(dateStr);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+/**
+ * Sorts contributions strictly from oldest to newest (du plus ancien au plus récent)
+ */
+export function sortContributionsOldestFirst<T extends { date: string; createdAt?: number; receiptNumber?: string; id: string }>(list: T[]): T[] {
+  return [...list].sort((a, b) => {
+    // 1. Primary: Compare parsed dates
+    const timeA = parseContributionDate(a.date);
+    const timeB = parseContributionDate(b.date);
+    if (timeA !== timeB) {
+      return timeA - timeB;
+    }
+
+    // 2. Secondary: If dates match, compare createdAt timestamp
+    if (a.createdAt && b.createdAt && a.createdAt !== b.createdAt) {
+      return a.createdAt - b.createdAt;
+    }
+
+    // 3. Tertiary: Compare receipt numbers numerically (REC-001 before REC-002)
+    if (a.receiptNumber && b.receiptNumber) {
+      const numA = parseInt(a.receiptNumber.replace(/\D/g, ''), 10);
+      const numB = parseInt(b.receiptNumber.replace(/\D/g, ''), 10);
+      if (!isNaN(numA) && !isNaN(numB) && numA !== numB) {
+        return numA - numB;
+      }
+      return a.receiptNumber.localeCompare(b.receiptNumber);
+    }
+
+    // 4. Fallback: by ID
+    return a.id.localeCompare(b.id);
+  });
+}
+

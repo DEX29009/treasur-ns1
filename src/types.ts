@@ -33,6 +33,7 @@ export interface Contribution {
   receiptNumber: string;
   projectId?: string;
   projectName?: string;
+  createdAt?: number;
 }
 
 export interface Expense {

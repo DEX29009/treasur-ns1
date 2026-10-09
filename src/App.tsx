@@ -15,7 +15,8 @@ import {
   addProjectToDB, 
   updateProjectInDB,
   deleteProjectFromDB,
-  restoreFullBackupToDB
+  restoreFullBackupToDB,
+  deleteContributionFromDB
 } from './services/treasuryService';
 import { getInitialStudents } from './data/studentsData';
 import { getGradeForAmount, formatCurrency } from './utils/grades';
@@ -29,7 +30,8 @@ import { AddExpenseSimpleModal } from './components/AddExpenseSimpleModal';
 import { AddProjectModal } from './components/AddProjectModal';
 import { EditProjectModal } from './components/EditProjectModal';
 import { BackupModal } from './components/BackupModal';
-import { Plus, Minus, ShieldCheck } from 'lucide-react';
+import { CancelPaymentModal } from './components/CancelPaymentModal';
+import { Plus, Minus, ShieldCheck, Trash2, ArrowUpDown } from 'lucide-react';
 
 export default function App() {
   // Always prompt for profile on first load and on every visit
@@ -50,12 +52,17 @@ export default function App() {
   // Modals
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
   const [preselectedStudentId, setPreselectedStudentId] = useState<string | undefined>(undefined);
+  const [isCancelPaymentOpen, setIsCancelPaymentOpen] = useState(false);
+  const [contributionToCancel, setContributionToCancel] = useState<Contribution | null>(null);
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [preselectedProjectIdForExpense, setPreselectedProjectIdForExpense] = useState<string | undefined>(undefined);
   const [isAddProjectOpen, setIsAddProjectOpen] = useState(false);
   const [selectedProjectToEdit, setSelectedProjectToEdit] = useState<Project | null>(null);
   const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
   const [isBackupOpen, setIsBackupOpen] = useState(false);
+
+  // Sorting preference for committee (default: oldest to newest as requested)
+  const [committeeSortOrder, setCommitteeSortOrder] = useState<'oldestFirst' | 'newestFirst'>('oldestFirst');
 
   // Connect to Firestore real-time listeners across all devices
   useEffect(() => {
@@ -132,14 +139,82 @@ export default function App() {
              (c.studentName && student.name && c.studentName.toLowerCase().trim() === student.name.toLowerCase().trim())
       );
       const sumFromContribs = studentContribs.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
-      const finalTotal = Math.max(Number(student.totalContributed || 0), sumFromContribs);
       return {
         ...student,
-        totalContributed: finalTotal,
-        contributionsCount: Math.max(student.contributionsCount || 0, studentContribs.length)
+        totalContributed: sumFromContribs,
+        contributionsCount: studentContribs.length,
+        lastContributionDate: studentContribs.length > 0 ? studentContribs[0].date : undefined
       };
     });
   }, [students, contributions]);
+
+  // Contributions sorted according to user role
+  // Requirement: "classe les versement du plus ancient au plus recent en profil comité"
+  const displayedContributions = useMemo(() => {
+    const list = [...contributions];
+
+    const getContributionTime = (c: Contribution): number => {
+      let time = 0;
+      if (c.date) {
+        const parts = c.date.trim().split(/[/.-]/);
+        if (parts.length === 3 && parts[2].length === 4) {
+          const d = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+          if (!isNaN(d.getTime())) time = d.getTime();
+        } else {
+          const parsed = Date.parse(c.date);
+          if (!isNaN(parsed)) time = parsed;
+        }
+      }
+      return time;
+    };
+
+    const getReceiptNum = (c: Contribution): number => {
+      if (c.receiptNumber) {
+        const match = c.receiptNumber.match(/\d+/);
+        if (match) return parseInt(match[0], 10);
+      }
+      return 0;
+    };
+
+    if (currentRole === 'committee') {
+      if (committeeSortOrder === 'oldestFirst') {
+        // Du plus ancien au plus récent (Oldest first)
+        list.sort((a, b) => {
+          const timeA = getContributionTime(a);
+          const timeB = getContributionTime(b);
+          if (timeA !== timeB && timeA > 0 && timeB > 0) return timeA - timeB;
+          const recA = getReceiptNum(a);
+          const recB = getReceiptNum(b);
+          if (recA !== recB && recA > 0 && recB > 0) return recA - recB;
+          return a.id.localeCompare(b.id);
+        });
+      } else {
+        // Du plus récent au plus ancien
+        list.sort((a, b) => {
+          const timeA = getContributionTime(a);
+          const timeB = getContributionTime(b);
+          if (timeA !== timeB && timeA > 0 && timeB > 0) return timeB - timeA;
+          const recA = getReceiptNum(a);
+          const recB = getReceiptNum(b);
+          if (recA !== recB && recA > 0 && recB > 0) return recB - recA;
+          return b.id.localeCompare(a.id);
+        });
+      }
+    } else {
+      // Pour les élèves : affichage des plus récents d'abord
+      list.sort((a, b) => {
+        const timeA = getContributionTime(a);
+        const timeB = getContributionTime(b);
+        if (timeA !== timeB && timeA > 0 && timeB > 0) return timeB - timeA;
+        const recA = getReceiptNum(a);
+        const recB = getReceiptNum(b);
+        if (recA !== recB && recA > 0 && recB > 0) return recB - recA;
+        return b.id.localeCompare(a.id);
+      });
+    }
+
+    return list;
+  }, [contributions, currentRole, committeeSortOrder]);
 
   // Sorted students list
   const sortedStudents = useMemo(() => {
@@ -184,6 +259,34 @@ export default function App() {
       ...paymentData,
       receiptNumber
     }, student);
+  };
+
+  const handleConfirmCancelPayment = async (contribution: Contribution) => {
+    // 1. Optimistic instant UI update
+    const updatedContribs = contributions.filter(c => c.id !== contribution.id);
+    setContributions(updatedContribs);
+
+    // 2. Save immediate local backup
+    saveLocalBackup(students, updatedContribs, expenses, projects, `Versement annulé (${contribution.studentName})`);
+
+    // 3. Find student to update
+    const student = students.find(
+      s => s.id === contribution.studentId || 
+           (s.name && contribution.studentName && s.name.toLowerCase().trim() === contribution.studentName.toLowerCase().trim())
+    );
+
+    // 4. Filter remaining contributions for this student
+    const remainingStudentContribs = updatedContribs.filter(
+      c => c.studentId === contribution.studentId ||
+           (student && c.studentId === student.id) ||
+           (c.studentName && contribution.studentName && c.studentName.toLowerCase().trim() === contribution.studentName.toLowerCase().trim())
+    );
+
+    await deleteContributionFromDB(
+      contribution.id,
+      student ? student.id : contribution.studentId,
+      remainingStudentContribs
+    );
   };
 
   const handleAddExpense = async (expenseData: Omit<Expense, 'id'>, projectToMarkPaid?: string) => {
@@ -484,10 +587,33 @@ export default function App() {
           <div className="lg:col-span-7 space-y-6">
             {/* Versements Card */}
             <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-base font-bold text-slate-900">
-                  Versements
-                </h2>
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 flex items-center gap-1.5">
+                    <span>Versements</span>
+                    <span className="text-xs font-normal text-slate-400">({displayedContributions.length})</span>
+                  </h2>
+
+                  {/* Tri pour profil comité : Du plus ancien au plus récent */}
+                  {currentRole === 'committee' && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                        <span>⏳ Ordre :</span>
+                        <span>{committeeSortOrder === 'oldestFirst' ? 'Plus ancien → Plus récent' : 'Plus récent → Plus ancien'}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCommitteeSortOrder(prev => prev === 'oldestFirst' ? 'newestFirst' : 'oldestFirst')}
+                        className="inline-flex items-center gap-0.5 text-[10px] text-slate-500 hover:text-emerald-700 underline font-medium cursor-pointer"
+                        title="Changer l'ordre chronologique des versements"
+                      >
+                        <ArrowUpDown className="w-2.5 h-2.5" />
+                        <span>Inverser</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 {currentRole === 'committee' && (
                   <button
                     onClick={() => {
@@ -503,19 +629,25 @@ export default function App() {
               </div>
 
               <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto">
-                {contributions.length === 0 ? (
+                {displayedContributions.length === 0 ? (
                   <div className="text-xs text-slate-400 text-center py-6">
                     Aucun versement enregistré.
                   </div>
                 ) : (
-                  contributions.map((c) => (
-                    <div key={c.id} className="py-3 flex items-center justify-between text-xs">
+                  displayedContributions.map((c) => (
+                    <div key={c.id} className="py-3 flex items-center justify-between text-xs group hover:bg-slate-50/50 -mx-1 px-1 rounded-lg transition-colors">
                       <div className="min-w-0 flex-1 mr-3">
-                        <div className="font-bold text-slate-900 truncate">
-                          {c.studentName}
+                        <div className="font-bold text-slate-900 truncate flex items-center gap-1.5">
+                          <span>{c.studentName}</span>
+                          {c.receiptNumber && (
+                            <span className="text-[10px] font-mono text-slate-400 font-normal">
+                              ({c.receiptNumber})
+                            </span>
+                          )}
                         </div>
                         <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
                           <span>{c.date} · {c.motif}</span>
+                          {c.paymentMethod && <span>· {c.paymentMethod}</span>}
                           {c.projectName && (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 font-medium border border-emerald-200">
                               🎯 {c.projectName}
@@ -523,8 +655,27 @@ export default function App() {
                           )}
                         </div>
                       </div>
-                      <div className="font-bold text-emerald-600 font-mono text-sm shrink-0">
-                        +{formatCurrency(c.amount)}
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="font-bold text-emerald-600 font-mono text-sm">
+                          +{formatCurrency(c.amount)}
+                        </div>
+
+                        {/* Option pour annuler le versement (profil comité) */}
+                        {currentRole === 'committee' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setContributionToCancel(c);
+                              setIsCancelPaymentOpen(true);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-[11px]"
+                            title="Annuler ce versement"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline font-semibold">Annuler</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))
@@ -640,6 +791,16 @@ export default function App() {
         projects={projects}
         preselectedStudentId={preselectedStudentId}
         onAddPayment={handleAddPayment}
+      />
+
+      <CancelPaymentModal
+        isOpen={isCancelPaymentOpen}
+        onClose={() => {
+          setIsCancelPaymentOpen(false);
+          setContributionToCancel(null);
+        }}
+        contribution={contributionToCancel}
+        onConfirmCancel={handleConfirmCancelPayment}
       />
 
       <AddExpenseSimpleModal
