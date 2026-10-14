@@ -18,6 +18,7 @@ export interface Project {
   status?: 'active' | 'completed' | 'paid';
   paidAt?: string;
   paidAmount?: number;
+  withdrawnAmount?: number;
   createdAt: string;
 }
 

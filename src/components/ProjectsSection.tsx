@@ -1,21 +1,23 @@
 import React from 'react';
-import { Project, Contribution, UserRole } from '../types';
+import { Project, Contribution, Expense, UserRole } from '../types';
 import { formatCurrency } from '../utils/grades';
-import { Target, Plus, Pencil, CheckCircle2, RotateCcw, Calendar, Flag, ArrowDownToLine, Coins } from 'lucide-react';
+import { Plus, Pencil, CheckCircle2, RotateCcw, Calendar, Flag, ArrowDownToLine, Coins } from 'lucide-react';
 
 interface ProjectsSectionProps {
   projects: Project[];
   contributions: Contribution[];
+  expenses?: Expense[];
   currentRole: UserRole | null;
   onOpenAddProject: () => void;
   onEditProject: (project: Project) => void;
   onToggleProjectStatus: (projectId: string, currentStatus: 'active' | 'completed' | 'paid') => void;
-  onWithdrawFunds?: (projectId: string) => void;
+  onWithdrawFunds?: (projectId: string, mode?: 'partial_project' | 'full_project') => void;
 }
 
 export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
   projects,
   contributions,
+  expenses = [],
   currentRole,
   onOpenAddProject,
   onEditProject,
@@ -31,7 +33,7 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
             <span>Projets de la classe</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Cagnottes, objectifs financiers, échéances et décaissements
+            Cagnottes, objectifs financiers, retraits partiels et décaissements
           </p>
         </div>
 
@@ -65,6 +67,11 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
             const projectContributions = contributions.filter(c => c.projectId === project.id);
             const totalCollected = projectContributions.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
 
+            // Calculate total already withdrawn for this project
+            const projectExpenses = expenses.filter(e => e.projectId === project.id);
+            const totalWithdrawn = projectExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+            const remainingFunds = Math.max(0, totalCollected - totalWithdrawn);
+
             const hasTarget = Boolean(project.hasTarget && project.targetAmount && project.targetAmount > 0);
             const targetAmount = project.targetAmount || 0;
             const progressPercent = hasTarget ? Math.min(100, Math.round((totalCollected / targetAmount) * 100)) : 0;
@@ -95,7 +102,7 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
                       {isPaid ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
                           <Coins className="w-3 h-3 text-amber-700" />
-                          <span>Payé</span>
+                          <span>Payé (Clôturé)</span>
                         </span>
                       ) : isCompleted ? (
                         <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700 border border-slate-300">
@@ -163,24 +170,39 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
                 )}
 
                 {/* Financial figures */}
-                <div className="flex items-baseline justify-between pt-1">
-                  <div>
-                    <span className="text-xs text-slate-500">
-                      {isPaid ? 'Total décaissé : ' : 'Collecté : '}
+                <div className="bg-white/80 rounded-lg p-2.5 border border-slate-200/80 space-y-1 text-xs">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-slate-500">
+                      {isPaid ? 'Total décaissé :' : 'Total collecté :'}
                     </span>
                     <span className={`font-bold font-mono text-sm ${isPaid ? 'text-amber-800' : 'text-emerald-700'}`}>
                       {formatCurrency(totalCollected)}
                     </span>
                   </div>
 
-                  {hasTarget ? (
-                    <div className="text-xs text-slate-600">
-                      Objectif : <span className="font-mono font-semibold">{formatCurrency(targetAmount)}</span>
+                  {/* Show partial withdrawal details if any */}
+                  {totalWithdrawn > 0 && !isPaid && (
+                    <>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-500">Déjà retiré (partiel) :</span>
+                        <span className="font-mono font-semibold text-rose-600">
+                          -{formatCurrency(totalWithdrawn)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
+                        <span className="font-medium text-indigo-900">Solde restant disponible :</span>
+                        <span className="font-mono font-bold text-indigo-700">
+                          {formatCurrency(remainingFunds)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                  {hasTarget && (
+                    <div className="flex items-baseline justify-between pt-1 border-t border-slate-100 text-[11px] text-slate-600">
+                      <span>Objectif :</span>
+                      <span className="font-mono font-semibold">{formatCurrency(targetAmount)}</span>
                     </div>
-                  ) : (
-                    <span className="text-[11px] text-slate-400 bg-slate-200/60 px-2 py-0.5 rounded font-medium">
-                      Sans objectif fixe
-                    </span>
                   )}
                 </div>
 
@@ -215,16 +237,48 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
                   </div>
                 )}
 
-                {/* Direct Action for Committee: Retirer les fonds if completed & not paid */}
-                {currentRole === 'committee' && isCompleted && !isPaid && totalCollected > 0 && onWithdrawFunds && (
-                  <div className="pt-2 border-t border-slate-200/80 flex justify-end">
+                {/* Action Buttons for Committee: Retrait partiel & Retirer tous les fonds */}
+                {currentRole === 'committee' && !isPaid && remainingFunds > 0 && onWithdrawFunds && (
+                  <div className="pt-2 border-t border-slate-200/80 flex items-center justify-end gap-2 flex-wrap">
+                    {/* Option à part : Retirer une partie de l'argent */}
                     <button
                       type="button"
-                      onClick={() => onWithdrawFunds(project.id)}
-                      className="px-3 py-1.5 bg-rose-700 hover:bg-rose-800 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                      onClick={() => onWithdrawFunds(project.id, 'partial_project')}
+                      className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                      title="Retirer une partie des fonds sans clôturer le projet"
                     >
-                      <ArrowDownToLine className="w-3.5 h-3.5" />
-                      <span>Retirer les fonds ({formatCurrency(totalCollected)})</span>
+                      <Coins className="w-3.5 h-3.5" />
+                      <span>Retrait partiel</span>
+                    </button>
+
+                    {/* Retirer tous les fonds (seulement si le projet est terminé) */}
+                    {isCompleted && (
+                      <button
+                        type="button"
+                        onClick={() => onWithdrawFunds(project.id, 'full_project')}
+                        className="px-2.5 py-1.5 bg-rose-700 hover:bg-rose-800 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                        title="Retirer la totalité des fonds restants et marquer payé"
+                      >
+                        <ArrowDownToLine className="w-3.5 h-3.5" />
+                        <span>Retirer tout ({formatCurrency(remainingFunds)})</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Information if completed but all funds already withdrawn */}
+                {isCompleted && !isPaid && remainingFunds === 0 && (
+                  <div className="p-2 bg-slate-100 rounded-lg border border-slate-200 text-[11px] text-slate-600 flex items-center justify-between">
+                    <span className="flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Tous les fonds ont été décaissés</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onToggleProjectStatus(project.id, 'completed')}
+                      className="text-[10px] text-slate-500 underline hover:text-slate-800 cursor-pointer"
+                    >
+                      Marquer soldé
                     </button>
                   </div>
                 )}
@@ -234,7 +288,7 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({
                   <div className="p-2 bg-amber-50 rounded-lg border border-amber-200 text-[11px] text-amber-900 flex items-center justify-between">
                     <span className="flex items-center gap-1 font-semibold">
                       <CheckCircle2 className="w-3.5 h-3.5 text-amber-700" />
-                      <span>Fonds retirés par la caisse</span>
+                      <span>Fonds retirés par la caisse (Soldé)</span>
                     </span>
                     {project.paidAt && <span>le {project.paidAt}</span>}
                   </div>

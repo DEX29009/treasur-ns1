@@ -56,6 +56,7 @@ export default function App() {
   const [contributionToCancel, setContributionToCancel] = useState<Contribution | null>(null);
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [preselectedProjectIdForExpense, setPreselectedProjectIdForExpense] = useState<string | undefined>(undefined);
+  const [expenseInitialMode, setExpenseInitialMode] = useState<'standard' | 'partial_project' | 'full_project'>('standard');
   const [isAddProjectOpen, setIsAddProjectOpen] = useState(false);
   const [selectedProjectToEdit, setSelectedProjectToEdit] = useState<Project | null>(null);
   const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
@@ -298,27 +299,58 @@ export default function App() {
     setExpenses(updatedExpenses);
 
     let updatedProjects = projects;
+    let backupLabel = 'Dépense enregistrée';
+
     if (projectToMarkPaid) {
+      // Total withdrawal: project is marked as paid/soldé
+      const prevWithdrawn = expenses
+        .filter(e => e.projectId === projectToMarkPaid)
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      const totalPaidAmount = prevWithdrawn + expenseData.amount;
+
       updatedProjects = projects.map(p => 
         p.id === projectToMarkPaid 
           ? { 
               ...p, 
               status: 'paid' as const, 
               paidAt: expenseData.date, 
-              paidAmount: expenseData.amount 
+              paidAmount: totalPaidAmount,
+              withdrawnAmount: totalPaidAmount
             } 
           : p
       );
       setProjects(updatedProjects);
+      backupLabel = `Décaissement total projet (${expenseData.projectName || 'Projet'})`;
       await updateProjectInDB(projectToMarkPaid, { 
         status: 'paid', 
         paidAt: expenseData.date, 
-        paidAmount: expenseData.amount 
+        paidAmount: totalPaidAmount,
+        withdrawnAmount: totalPaidAmount
+      });
+    } else if (expenseData.projectId) {
+      // Partial withdrawal: project remains active/completed, we record the withdrawal
+      const prevWithdrawn = expenses
+        .filter(e => e.projectId === expenseData.projectId)
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      const newWithdrawn = prevWithdrawn + expenseData.amount;
+
+      updatedProjects = projects.map(p => 
+        p.id === expenseData.projectId 
+          ? { 
+              ...p, 
+              withdrawnAmount: newWithdrawn 
+            } 
+          : p
+      );
+      setProjects(updatedProjects);
+      backupLabel = `Retrait partiel projet (${expenseData.projectName || 'Projet'})`;
+      await updateProjectInDB(expenseData.projectId, { 
+        withdrawnAmount: newWithdrawn 
       });
     }
 
     // Save immediate local backup
-    saveLocalBackup(students, contributions, updatedExpenses, updatedProjects, 'Dépense enregistrée');
+    saveLocalBackup(students, contributions, updatedExpenses, updatedProjects, backupLabel);
 
     await addExpenseToDB(expenseData);
   };
@@ -693,6 +725,7 @@ export default function App() {
                   <button
                     onClick={() => {
                       setPreselectedProjectIdForExpense(undefined);
+                      setExpenseInitialMode('standard');
                       setIsAddExpenseOpen(true);
                     }}
                     className="flex items-center gap-1 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
@@ -740,12 +773,14 @@ export default function App() {
           <ProjectsSection
             projects={projects}
             contributions={contributions}
+            expenses={expenses}
             currentRole={currentRole}
             onOpenAddProject={() => setIsAddProjectOpen(true)}
             onEditProject={handleEditProject}
             onToggleProjectStatus={handleToggleProjectStatus}
-            onWithdrawFunds={(projectId) => {
+            onWithdrawFunds={(projectId, mode) => {
               setPreselectedProjectIdForExpense(projectId);
+              setExpenseInitialMode(mode || 'partial_project');
               setIsAddExpenseOpen(true);
             }}
           />
@@ -808,11 +843,14 @@ export default function App() {
         onClose={() => {
           setIsAddExpenseOpen(false);
           setPreselectedProjectIdForExpense(undefined);
+          setExpenseInitialMode('standard');
         }}
         availableBalance={balance}
         projects={projects}
         contributions={contributions}
+        expenses={expenses}
         preselectedProjectId={preselectedProjectIdForExpense}
+        initialMode={expenseInitialMode}
         onAddExpense={handleAddExpense}
       />
 

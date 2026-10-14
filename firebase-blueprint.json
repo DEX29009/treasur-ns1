@@ -64,6 +64,7 @@
         "status": { "type": "string", "enum": ["active", "completed", "paid"] },
         "paidAt": { "type": "string" },
         "paidAmount": { "type": "number" },
+        "withdrawnAmount": { "type": "number" },
         "createdAt": { "type": "string" }
       },
       "required": ["id", "name", "hasTarget", "createdAt"]
